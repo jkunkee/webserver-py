@@ -1,7 +1,7 @@
 import select
 import socket
 import sys
-
+import httpparser
 
 class Poller:
     """ Polling server """
@@ -65,14 +65,23 @@ class Poller:
             del self.clients[fd]
 
     def handleServer(self):
+        # accept the connection, producing a valid socket
         (client, address) = self.server.accept()
+        # put it in the map of clients
         self.clients[client.fileno()] = client
+        # start epoll listening for events on this socket :)
         self.poller.register(client.fileno(), self.pollmask)
+        client.recvBuf = ""
 
     def handleClient(self, fd):
-        data = self.clients[fd].recv(self.size)
+        # select the client
+        client = self.clients[fd]
+        # read in a chunk
+        data = client.recv(self.size)
+        # python allows truthy/falsey values?!
         if data:
-            self.clients[fd].send(data)
+            client.recvBuf += data
+            pieces = client.recvBuf.split(http)
         else:
             self.poller.unregister(fd)
             self.clients[fd].close()
