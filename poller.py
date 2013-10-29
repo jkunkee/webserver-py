@@ -2,9 +2,10 @@ import select
 import socket
 import sys
 
+
 class Poller:
     """ Polling server """
-    def __init__(self,port):
+    def __init__(self, port):
         self.host = ""
         self.port = port
         self.open_socket()
@@ -14,11 +15,15 @@ class Poller:
     def open_socket(self):
         """ Setup the socket for incoming clients """
         try:
+            # create the socket
             self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR,1)
-            self.server.bind((self.host,self.port))
+            # do some additional socket configuration
+            self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            # tell the socket where to listen
+            self.server.bind((self.host, self.port))
+            # back log size is ignored in Linux anyhow, but Python defaults to 5
             self.server.listen(5)
-        except socket.error, (value,message):
+        except socket.error, (value, message):
             if self.server:
                 self.server.close()
             print "Could not open socket: " + message
@@ -28,14 +33,14 @@ class Poller:
         """ Use poll() to handle each incoming client."""
         self.poller = select.epoll()
         self.pollmask = select.EPOLLIN | select.EPOLLHUP | select.EPOLLERR
-        self.poller.register(self.server,self.pollmask)
+        self.poller.register(self.server, self.pollmask)
         while True:
             # poll sockets
             try:
                 fds = self.poller.poll(timeout=1)
             except:
                 return
-            for (fd,event) in fds:
+            for (fd, event) in fds:
                 # handle errors
                 if event & (select.POLLHUP | select.POLLERR):
                     self.handleError(fd)
@@ -45,26 +50,26 @@ class Poller:
                     self.handleServer()
                     continue
                 # handle client socket
-                result = self.handleClient(fd)
+                self.handleClient(fd)
 
-    def handleError(self,fd):
+    def handleError(self, fd):
         self.poller.unregister(fd)
         if fd == self.server.fileno():
             # recreate server socket
             self.server.close()
             self.open_socket()
-            self.poller.register(self.server,self.pollmask)
+            self.poller.register(self.server, self.pollmask)
         else:
             # close the socket
             self.clients[fd].close()
             del self.clients[fd]
 
     def handleServer(self):
-        (client,address) = self.server.accept()
+        (client, address) = self.server.accept()
         self.clients[client.fileno()] = client
-        self.poller.register(client.fileno(),self.pollmask)
+        self.poller.register(client.fileno(), self.pollmask)
 
-    def handleClient(self,fd):
+    def handleClient(self, fd):
         data = self.clients[fd].recv(self.size)
         if data:
             self.clients[fd].send(data)

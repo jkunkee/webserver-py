@@ -1,5 +1,6 @@
 
 import argparse
+import poller
 
 
 class ArgumentsParser:
@@ -7,7 +8,7 @@ class ArgumentsParser:
         ''' parse arguments, which include '-p' for port '''
         parser = argparse.ArgumentParser(
             prog='Jon`s HTTP Server',
-            description='A simple echo server that handles one client at a time',
+            description='A simple HTTP server that uses asynchronous I/O',
             add_help=True
         )
         parser.add_argument(
@@ -26,3 +27,5 @@ if __name__ == "__main__":
     print("Welcome to Jon's Teensy HTTP Server!")
     print("You have asked me to operate on port %d", argParser.args.port)
     print("Wahoo!")
+    server = poller.Poller(argParser.args.port)
+    server.run()
