@@ -1,0 +1,29 @@
+{
+  "mainFile": "webserver-main.py", 
+  "use-tabs": false, 
+  "venv": "/home/jkunkee/360/virtualenv-python3/bin/python", 
+  "relatedProjects": [], 
+  "name": "webserver-py", 
+  "license": "MIT License", 
+  "url": "", 
+  "pythonPath": "python3", 
+  "preExecScript": "", 
+  "additional_builtins": [], 
+  "programParams": "", 
+  "indentation": 4, 
+  "PYTHONPATH": "", 
+  "supported-extensions": [
+    ".py", 
+    ".html", 
+    ".jpg", 
+    ".png", 
+    ".ui", 
+    ".css", 
+    ".json", 
+    ".js", 
+    ".ini"
+  ], 
+  "project-type": "", 
+  "postExecScript": "", 
+  "description": ""
+}
