@@ -39,7 +39,6 @@ class HttpHeader:
             )
 
     def toHttp(self):
-        print("converting me to http:", self)
         lines = []
 
         # get the first line built up

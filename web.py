@@ -20,6 +20,11 @@ def parse_arguments():
         help='port the server will bind to',
         default=8080
     )
+    parser.add_argument(
+        '-d', '--debug',
+        action='store_true',
+        help='enable flood of somewhat useful debugging messages'
+    )
     return parser.parse_args()
 
 

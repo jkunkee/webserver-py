@@ -1,3 +1,6 @@
+# enable using print() as a function
+from __future__ import print_function
+
 import select
 import socket
 import sys
@@ -6,6 +9,12 @@ import errno
 import os
 
 import httpparser
+
+
+def Print(*args):
+    debug = False
+    if debug:
+        print(*args)
 
 
 class Poller:
@@ -18,9 +27,9 @@ class Poller:
         self.open_socket()
         self.clients = {}
         try:
-            self.timeout = float(parms["timeout"])
+            self.socketTimeout = float(parms["timeout"])
         except:
-            self.timeout = 5.0
+            self.socketTimeout = 5.0
 
         self.types = types
         self.hosts = hosts
@@ -40,7 +49,7 @@ class Poller:
         except socket.error as err:
             if self.server:
                 self.server.close()
-            print("Could not open socket: %s" % (err))
+            Print("Could not open socket: %s" % (err))
             sys.exit(1)
 
     def run(self):
@@ -49,10 +58,11 @@ class Poller:
         self.pollmask = select.EPOLLIN | select.EPOLLHUP | select.EPOLLERR
         self.poller.register(self.server, self.pollmask)
 
+        lastSweep = time.time()
         while True:
             # poll sockets
             try:
-                fds = self.poller.poll(timeout=1)
+                fds = self.poller.poll(timeout=self.socketTimeout / 4)
             except:
                 return
             for (fd, event) in fds:
@@ -65,8 +75,22 @@ class Poller:
                     self.handleServer()
                     continue
                 # handle client socket
-                print("Got client socket event for", fd)
+                Print("Got client socket event for", fd)
                 self.handleClient(fd)
+            now = time.time()
+            if now - lastSweep > self.socketTimeout:
+                Print("Conducting mark-and-sweep...")
+                expired_fds = []
+                # find all of the expired file descriptors
+                for fd in self.clients.keys():
+                    client = self.clients[fd]
+                    if now - client.lastActivityTime > self.socketTimeout:
+                        expired_fds.append(fd)
+                # ...handle them, Jeeves
+                for fd in expired_fds:
+                    self.handleError(fd)
+                # set up to wait until next time.
+                lastSweep = time.time()
 
     def handleError(self, fd):
         # stop listening for I/O
@@ -98,7 +122,7 @@ class Poller:
         err = self.clients[fd].handleEvent()
         if err:
             # Oh Clap, it sleems we have to die!
-            print("Got an error, hanging up on", fd)
+            Print("Got an error, hanging up on", fd, err)
             self.handleError(fd)
 
 
@@ -108,7 +132,8 @@ class Client:
         self.socket = socket
         self.recvBuf = b""
         self.header = None
-        self.size = 4096
+        self.inputChunkSize = 4096
+        self.fileChunkSize = 8192
         self.lastActivityTime = time.time()
 
         self.types = types
@@ -116,19 +141,25 @@ class Client:
 
     def handleEvent(self):
         """ Handles any event that might have fired on this Client's socket """
+
+        # keep track of how recently this socket saw traffic
+        self.lastActivityTime = time.time()
+
         # read in all available chunks
         while True:
             try:
-                data = self.socket.recv(self.size, socket.MSG_DONTWAIT)
+                data = self.socket.recv(self.inputChunkSize, socket.MSG_DONTWAIT)
                 if not data:
                     # cause socket to be closed
-                    return "event fired for fd %d, but no data received. closing socket" % (self.socket.fileno())
+                    return "event fired for fd %d, but no data received. closing socket. %s" % (self.socket.fileno(), data)
                 # yay! we got data! put it in the buffer :)
                 self.recvBuf += data
             except socket.error as err:
                 if err.errno == errno.EAGAIN or err.errno == errno.EWOULDBLOCK:
+                    Print("done listening for new data trigger:", err)
                     break
                 else:
+                    Print("")
                     return err
 
         # if we don't have a header, try to find one
@@ -146,11 +177,11 @@ class Client:
                 msg + httpparser.HTTP_MSG_END,
             )
             # get mad if we failed, work if we succeeded
-            if request:
-                print("successfully parsed header:", request)
+            if request and not errors:
+                Print("successfully parsed header:", request)
                 return self.handleRequest(request)
             else:
-                print("error parsing header:", errors)
+                Print("error parsing header:", errors)
                 return self.handleError(400)
 
         # don't close the socket
@@ -160,6 +191,9 @@ class Client:
         response = httpparser.makeResHeader()
 
         # first, figure out what file they actually want
+        if "Host" not in request.headers:
+            self.handleError(400)
+            return None
         host_pcs = request.headers["Host"].split(":")
         hostname = host_pcs[0]
         hostRoot = None
@@ -176,7 +210,7 @@ class Client:
         #joinedpath = os.path.join(urlpath, hostRoot)
         joinedpath = hostRoot + "/" + urlpath
         filepath = os.path.abspath(joinedpath)
-        #print("combined", hostRoot, "with", urlpath, "to get", joinedpath, "which resolves to", filepath)
+        #Print("combined", hostRoot, "with", urlpath, "to get", joinedpath, "which resolves to", filepath)
 
         # now open the file
         fd = None
@@ -190,7 +224,7 @@ class Client:
                 os.close(fd)
                 fd = None
 
-            print ("error accessing file:", filepath, e)
+            Print ("error accessing file:", filepath, e)
 
             if e.errno == errno.EACCES:
                 self.handleError(403)
@@ -204,12 +238,12 @@ class Client:
 
         # due to the exhaustive nature of the except: statement, we assume
         # the file exists.
-        print("file exists, fd: %s, stats: %s\n" % (
+        Print("file exists, fd: %s, stats: %s\n" % (
             fd, fileStats,
         ))
         # test file access
         #if fileExists:
-            #print("line", os.read(fd, 16))
+            #Print("line", os.read(fd, 16))
 
         # inform the user about the size
         response.headers["Content-Length"] = fileStats.st_size
@@ -225,15 +259,15 @@ class Client:
 
         # now handle the request per method
         if request.method == "GET" or request.method == "HEAD":
-            print("got", request.method)
+            Print("got", request.method)
             resStr = response.toHttp()
-            print("sending headers", resStr)
+            Print("sending headers", resStr)
             self.send(resStr)
             if request.method == "GET":
-                print("sending file too")
+                Print("sending file too")
                 self.sendfile(fd)
         else:
-            print("got UNSUPPORTED method:", request.method)
+            Print("got UNSUPPORTED method:", request.method)
             self.handleError(501)
 
         if fd is not None:
@@ -262,5 +296,5 @@ class Client:
             string = string[bytesSent:]
 
     def sendfile(self, fd):
-        while os.sendfile(self.socket.fileno(), fd, None, self.size) > 0:
+        while os.sendfile(self.socket.fileno(), fd, None, self.fileChunkSize) > 0:
             True
