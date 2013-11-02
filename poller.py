@@ -200,7 +200,6 @@ class Client:
                 return None
             else:
                 self.handleError(500)
-                print("Error not handled well!", e)
                 return None
 
         # due to the exhaustive nature of the except: statement, we assume
