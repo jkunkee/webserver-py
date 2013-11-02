@@ -64,6 +64,13 @@ def load_conf_file():
 
     confFile.close()
 
+    # do some minor validations
+    if not "default" in hostMap:
+        print("No default site defined in web.conf!\n")
+        sys.exit(1)
+    if not "default" in typeMap:
+        typeMap["default"] = "text/plain"
+
     return (typeMap, hostMap, parmMap)
 
 

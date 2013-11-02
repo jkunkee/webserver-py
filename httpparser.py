@@ -1,5 +1,11 @@
 #!/usr/bin/python3
 
+# time formatting
+from time import mktime
+from datetime import datetime
+from email.utils import formatdate
+
+
 HTTP_LINE_DELIM = b"\r\n"
 HTTP_MSG_END = HTTP_LINE_DELIM + HTTP_LINE_DELIM
 
@@ -31,6 +37,33 @@ class HttpHeader:
                 self.protocol,
                 self.headers,
             )
+
+    def toHttp(self):
+        print("converting me to http:", self)
+        lines = []
+
+        # get the first line built up
+        firstLine = ""
+        if self.isResponse:
+            firstLine = ("%s %s %s") % (
+                self.protocol, self.responseCode, self.errCodeDescription()
+            )
+        else:
+            firstLine = ("%s %s %s") % (
+                self.method, self.path, self.protocol
+            )
+        lines.append(firstLine)
+
+        # assemble the headers
+        for headerName in self.headers.keys():
+            lines.append("%s: %s" % (
+                headerName, self.headers[headerName],
+            ))
+
+        # ensure the end is correct
+        lines.append(HTTP_LINE_DELIM_STR)
+        # assemble the troops
+        return HTTP_LINE_DELIM_STR.join(lines)
 
     def errCodeDescription(self):
         return {
@@ -86,8 +119,13 @@ def parseReqHeader(headerBytes):
 
 def makeResHeader(responseCode=200):
     hdr = HttpHeader()
+    hdr.protocol = "HTTP/1.1"
     hdr.isResponse = True
-    hdr.responseCode = 200
+    hdr.responseCode = responseCode
+    # default headers
+    hdr.headers["Server"] = "Jon's pyHttp v0.1.0"
+    hdr.headers["Date"] = mkHttpTimestamp()
+    hdr.headers["Content-Length"] = 0
     return hdr
 
 if __name__ == "__main__":
@@ -100,3 +138,16 @@ if __name__ == "__main__":
     testHeaderStr = HTTP_LINE_DELIM.join(testHeaderLines)
     (testHeader, errs) = parseReqHeader(testHeaderStr)
     print(testHeader, errs)
+    print(testHeader.toHttp())
+
+
+# mkHttpTimestamp imports and code pulled from
+# http://stackoverflow.com/a/225106
+def mkHttpTimestamp():
+    now = datetime.now()
+    stamp = mktime(now.timetuple())
+    return formatdate(
+        timeval=stamp,
+        localtime=False,
+        usegmt=True,
+    )

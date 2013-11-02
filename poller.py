@@ -3,6 +3,7 @@ import socket
 import sys
 import time
 import errno
+import os
 
 import httpparser
 
@@ -33,8 +34,8 @@ class Poller:
             self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             # tell the socket where to listen
             self.server.bind((self.host, self.port))
-            # back log size is ignored in Linux anyhow, but Python defaults to
-            # 5
+            # back log size is ignored in Linux anyhow,
+            # but Python defaults to 5
             self.server.listen(5)
         except socket.error as err:
             if self.server:
@@ -157,24 +158,110 @@ class Client:
 
     def handleRequest(self, request):
         response = httpparser.makeResHeader()
-        if request.method == "GET":
-            print("got GET")
-        elif request.method == "HEAD":
-            print("got HEAD")
+
+        # first, figure out what file they actually want
+        host_pcs = request.headers["Host"].split(":")
+        hostname = host_pcs[0]
+        hostRoot = None
+
+        if not hostname or not (hostname in self.hosts):
+            hostRoot = self.hosts["default"]
         else:
-            print("got UNSUPPORTED")
-        print(response)
+            hostRoot = self.hosts[hostname]
+        #absHostRoot = os.path.abspath(hostRoot)
+
+        urlpath = request.path
+        if urlpath[-1] == "/":
+            urlpath = "index.html"
+        #joinedpath = os.path.join(urlpath, hostRoot)
+        joinedpath = hostRoot + "/" + urlpath
+        filepath = os.path.abspath(joinedpath)
+        #print("combined", hostRoot, "with", urlpath, "to get", joinedpath, "which resolves to", filepath)
+
+        # now open the file
+        fd = None
+        fileStats = None
+
+        try:
+            fd = os.open(filepath, os.O_RDONLY)
+            fileStats = os.fstat(fd)
+        except (OSError, IOError) as e:
+            if fd is not None:
+                os.close(fd)
+                fd = None
+
+            print ("error accessing file:", filepath, e)
+
+            if e.errno == errno.EACCES:
+                self.handleError(403)
+                return None
+            elif e.errno == errno.ENOENT:
+                self.handleError(404)
+                return None
+            else:
+                self.handleError(500)
+                print("Error not handled well!", e)
+                return None
+
+        # due to the exhaustive nature of the except: statement, we assume
+        # the file exists.
+        print("file exists, fd: %s, stats: %s\n" % (
+            fd, fileStats,
+        ))
+        # test file access
+        #if fileExists:
+            #print("line", os.read(fd, 16))
+
+        # inform the user about the size
+        response.headers["Content-Length"] = fileStats.st_size
+        # TODO make Last-Modified draw from fileStats
+        response.headers["Last-Modified"] = httpparser.mkHttpTimestamp()
+        # decide on a content type
+        ext = filepath.split(".")[-1]
+        if ext in self.types:
+            contentType = self.types[ext]
+        else:
+            contentType = self.types["default"]
+        response.headers["Content-Type"] = contentType
+
+        # now handle the request per method
+        if request.method == "GET" or request.method == "HEAD":
+            print("got", request.method)
+            resStr = response.toHttp()
+            print("sending headers", resStr)
+            self.send(resStr)
+            if request.method == "GET":
+                print("sending file too")
+                self.sendfile(fd)
+        else:
+            print("got UNSUPPORTED method:", request.method)
+            self.handleError(501)
+
+        if fd is not None:
+            os.close(fd)
         return None
 
     def handleError(self, errno=400):
         response = httpparser.makeResHeader(errno)
-        self.socket.write(response)
+        body = "<html><head><title>%s</title></head><body>%s</body></html>\n" % (
+            "Error",
+            "You have encountered error %d (%s) while accessing this resource." % (
+                errno,
+                response.errCodeDescription(),
+            )
+        )
+        response.headers["Content-Length"] = len(body)
+        response.headers["Content-Type"] = self.types["html"]
+        self.send(response.toHttp())
+        self.send(body)
         return None
 
-    def send(string):
-        print("TODO: send", string)
+    def send(self, string):
+        string = bytearray(string, "utf-8")
+        while len(string) > 0:
+            bytesSent = self.socket.send(string)
+            string = string[bytesSent:]
 
-    def sendfile(filename):
-        print("TODO: send file", filename)
-        #with os.open(filename) as f:
-            #os.sendfile(self.socket.fd, )
+    def sendfile(self, fd):
+        while os.sendfile(self.socket.fileno(), fd, None, self.size) > 0:
+            True
