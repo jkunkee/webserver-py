@@ -122,7 +122,7 @@ class Poller:
         err = self.clients[fd].handleEvent()
         if err:
             # Oh Clap, it sleems we have to die!
-            print("Got an error, hanging up on", fd, err, self.clients[fd].remoteThreadID)
+            Print("Got an error, hanging up on", fd, err, self.clients[fd].remoteThreadID)
             self.handleError(fd)
 
 
@@ -150,7 +150,7 @@ class Client:
         while True:
             try:
                 data = self.socket.recv(self.inputChunkSize, socket.MSG_DONTWAIT)
-                if len(data) == 0:
+                if not data:
                     # cause socket to be closed
                     return "event fired for fd %d, but no data received. closing socket. %s" % (self.socket.fileno(), data)
                 # yay! we got data! put it in the buffer :)
@@ -191,8 +191,8 @@ class Client:
     def handleRequest(self, request):
         response = httpparser.makeResHeader()
 
-        if "X-Thread" in request.headers:
-            self.remoteThreadID = request.headers["X-Thread"]
+        if "X-Stress" in request.headers:
+            self.remoteThreadID = request.headers["X-Stress"]
         # first, figure out what file they actually want
         if "Host" not in request.headers:
             self.handleError(400)
